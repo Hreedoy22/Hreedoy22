@@ -1,0 +1,447 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include <fstream>
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <stdexcept>
+
+using namespace std;
+
+// Define custom exception classes
+class InvalidEmailException : public exception {
+public:
+    const char* what() const throw() {
+        return "Invalid email. Must end with @std.bdu.ac.bd";
+    }
+};
+
+class InvalidPasswordException : public exception {
+public:
+    const char* what() const throw() {
+        return "Invalid password. Must be at least 6 characters long";
+    }
+};
+
+struct Student {
+    string name;
+    int percentage;
+    string email;
+    string password;
+};
+
+bool isValidStudentEmail(const string &email) {
+    const string domain = "@std.bdu.ac.bd";
+    return email.size() > domain.size() &&
+           email.substr(email.size() - domain.size()) == domain;
+}
+
+bool isValidStudentPassword(const string &password) {
+    return password.size() >= 6;
+}
+
+class StudentManagementSystem {
+private:
+    vector<Student> students;
+    unordered_map<string, unordered_set<string>> friendships;
+    const string filename = "students.txt";
+    const string friendsFile = "friendships.txt";
+
+    // Load students from file
+    void loadFromFile() {
+        ifstream infile(filename);
+        if (infile.is_open()) {
+            students.clear();
+            Student student;
+            while (infile >> student.name >> student.percentage >> student.email >> student.password) {
+                students.push_back(student);
+            }
+            infile.close();
+        }
+        loadFriendships();
+    }
+
+    // Save students to file
+    void saveToFile() const {
+        ofstream outfile(filename);
+        if (outfile.is_open()) {
+            for (const auto &student : students) {
+                outfile << student.name << " " << student.percentage << " " << student.email << " " << student.password << endl;
+            }
+            outfile.close();
+        }
+        saveFriendships();
+    }
+
+    // Load friendships from file
+    void loadFriendships() {
+        ifstream infile(friendsFile);
+        if (infile.is_open()) {
+            friendships.clear();
+            string email1, email2;
+            while (infile >> email1 >> email2) {
+                friendships[email1].insert(email2);
+                friendships[email2].insert(email1);
+            }
+            infile.close();
+        }
+    }
+
+    // Save friendships to file
+    void saveFriendships() const {
+        ofstream outfile(friendsFile);
+        if (outfile.is_open()) {
+            for (const auto &pair : friendships) {
+                for (const auto &friendEmail : pair.second) {
+                    outfile << pair.first << " " << friendEmail << endl;
+                }
+            }
+            outfile.close();
+        }
+    }
+
+    // Merge Sort algorithm to sort students by percentage
+    void merge(vector<Student>& arr, int left, int mid, int right) {
+        int n1 = mid - left + 1;
+        int n2 = right - mid;
+
+        vector<Student> L(n1);
+        vector<Student> R(n2);
+
+        for (int i = 0; i < n1; i++)
+            L[i] = arr[left + i];
+        for (int j = 0; j < n2; j++)
+            R[j] = arr[mid + 1 + j];
+
+        int i = 0, j = 0, k = left;
+
+        while (i < n1 && j < n2) {
+            if (L[i].percentage > R[j].percentage ||
+                (L[i].percentage == R[j].percentage && L[i].email < R[j].email)) {
+                arr[k] = L[i];
+                i++;
+            } else {
+                arr[k] = R[j];
+                j++;
+            }
+            k++;
+        }
+
+        while (i < n1) {
+            arr[k] = L[i];
+            i++;
+            k++;
+        }
+
+        while (j < n2) {
+            arr[k] = R[j];
+            j++;
+            k++;
+        }
+    }
+
+    void mergeSort(vector<Student>& arr, int left, int right) {
+        if (left < right) {
+            int mid = left + (right - left) / 2;
+
+            mergeSort(arr, left, mid);
+            mergeSort(arr, mid + 1, right);
+
+            merge(arr, left, mid, right);
+        }
+    }
+
+    // DFS to explore the friendship network
+    void dfs(const string& email, unordered_set<string>& visited) const {
+        visited.insert(email);
+        if (friendships.find(email) != friendships.end()) {
+            for (const auto& friendEmail : friendships.at(email)) {
+                if (visited.find(friendEmail) == visited.end()) {
+                    dfs(friendEmail, visited);
+                }
+            }
+        }
+    }
+
+public:
+    StudentManagementSystem() {
+        loadFromFile();
+    }
+
+    ~StudentManagementSystem() {
+        saveToFile();
+    }
+
+    void addStudent(const Student &student) {
+        students.push_back(student);
+        saveToFile();
+        cout << "Student added successfully.\n";
+    }
+
+    void deleteStudent(int id) {
+        if (id < 1 || id > students.size()) {
+            cout << "Student with ID " << id << " not found.\n";
+            return;
+        }
+        students.erase(students.begin() + id - 1);
+        saveToFile();
+        cout << "Student deleted successfully.\n";
+    }
+
+    void displayAllStudents() {
+        if (students.empty()) {
+            cout << "No students available.\n";
+            return;
+        }
+
+        mergeSort(students, 0, students.size() - 1);
+
+        for (size_t i = 0; i < students.size(); ++i) {
+            cout << "ID: " << i + 1 << ", Name: " << students[i].name
+                 << ", Percentage: " << students[i].percentage
+                 << ", Email: " << students[i].email << endl;
+        }
+    }
+
+    void searchStudentById(int id) const {
+        if (id < 1 || id > students.size()) {
+            cout << "Student with ID " << id << " not found.\n";
+            return;
+        }
+        const Student &student = students[id - 1];
+        cout << "Student found: ID: " << id << ", Name: " << student.name
+             << ", Percentage: " << student.percentage
+             << ", Email: " << student.email << endl;
+    }
+
+    void searchStudentsByName(const string &name) const {
+        bool found = false;
+        for (size_t i = 0; i < students.size(); ++i) {
+            if (students[i].name == name) {
+                cout << "Student found: ID: " << i + 1 << ", Name: " << students[i].name
+                     << ", Percentage: " << students[i].percentage
+                     << ", Email: " << students[i].email << endl;
+                found = true;
+            }
+        }
+        if (!found) {
+            cout << "No students with name " << name << " found.\n";
+        }
+    }
+
+    bool isStudentInList(const string &email) const {
+        for (const auto &student : students) {
+            if (student.email == email) {
+               return true;
+            }
+        }
+        return false;
+    }
+
+    void addFriendship(const string& email1, const string& email2) {
+        if (email1 != email2 && isStudentInList(email1) && isStudentInList(email2)) {
+            friendships[email1].insert(email2);
+            friendships[email2].insert(email1);
+            saveFriendships();
+            cout << "Friendship added successfully.\n";
+        } else {
+            cout << "Invalid emails or trying to add friendship with self.\n";
+        }
+    }
+
+    void showFriendshipNetwork(const string& email) const {
+        if (!isStudentInList(email)) {
+            cout << "Student with email " << email << " not found.\n";
+            return;
+        }
+        unordered_set<string> visited;
+        dfs(email, visited);
+        cout << "Friendship network for " << email << ":\n";
+        for (const auto& e : visited) {
+            if (e != email) {
+                cout << e << endl;
+            }
+        }
+    }
+
+    void displayStudentDetails(const string& name, const string& email) const {
+        for (const auto& student : students) {
+            if (student.name == name && student.email == email) {
+                cout << "Student found: \n";
+                cout << "Name: " << student.name << "\n";
+                cout << "Percentage: " << student.percentage << "\n";
+                cout << "Email: " << student.email << "\n";
+                return;
+            }
+        }
+        cout << "Student with name " << name << " and email " << email << " not found.\n";
+    }
+};
+
+int main() {
+    try {
+        StudentManagementSystem system;
+        int mainChoice;
+
+        while (true) {
+            cout << "Identify yourself. You are...\n";
+            cout << "1. Admin\n";
+            cout << "2. Student\n";
+            cout << "Enter your choice (1 or 2): ";
+            cin >> mainChoice;
+
+            if (mainChoice == 1) {
+                string adminPassword;
+                cout << "Enter password: ";
+                cin >> adminPassword;
+
+                if (adminPassword == "1234") {
+                    cout << "Welcome, Admin!\n";
+                    int adminChoice;
+                    while (true) {
+                        cout << "\nAdmin Menu:\n";
+                        cout << "1. Add a new student\n";
+                        cout << "2. Delete a student\n";
+                        cout << "3. Display all students\n";
+                        cout << "4. Search for a student by ID\n";
+                        cout << "5. Search for students by name\n";
+                        cout << "6. Add a friendship\n";
+                        cout << "7. Exit to Main Menu\n";
+                        cout << "Enter your choice: ";
+                        cin >> adminChoice;
+
+                        switch (adminChoice) {
+                            case 1: {
+                                Student student;
+                                cout << "Enter student name: ";
+                                cin >> student.name;
+                                cout << "Enter student percentage: ";
+                                cin >> student.percentage;
+                                cout << "Enter student email: ";
+                                cin >> student.email;
+                                cout << "Enter student password: ";
+                                cin >> student.password;
+                                if (!isValidStudentEmail(student.email)) {
+                                    throw InvalidEmailException(); // Throw custom exception
+                                } else if (!isValidStudentPassword(student.password)) {
+                                    throw InvalidPasswordException(); // Throw custom exception
+                                } else {
+                                    system.addStudent(student);
+                                }
+                                break;
+                            }
+                            case 2: {
+                                int id;
+                                cout << "Enter student ID to delete: ";
+                                cin >> id;
+                                system.deleteStudent(id);
+                                break;
+                            }
+                            case 3:
+                                system.displayAllStudents();
+                                break;
+                            case 4: {
+                                int id;
+                                cout << "Enter student ID to search: ";
+                                cin >> id;
+                                system.searchStudentById(id);
+                                break;
+                            }
+                            case 5: {
+                                string name;
+                                cout << "Enter student name to search: ";
+                                cin >> name;
+                                system.searchStudentsByName(name);
+                                break;
+                            }
+                            case 6: {
+                                string email1, email2;
+                                cout << "Enter the first student email: ";
+                                cin >> email1;
+                                cout << "Enter the second student email: ";
+                                cin >> email2;
+                                system.addFriendship(email1, email2);
+                                break;
+                            }
+                            case 7:
+                                cout << "Returning to Main Menu...\n";
+                                goto mainMenu;
+                            default:
+                                cout << "Invalid choice. Please try again.\n";
+                                break;
+                        }
+                    }
+                } else {
+                    cout << "Invalid password for Admin.\n";
+                }
+            } else if (mainChoice == 2) {
+                string email, password;
+                cout << "Enter email: ";
+                cin >> email;
+                cout << "Enter password: ";
+                cin >> password;
+
+                if (!isValidStudentEmail(email)) {
+                    throw InvalidEmailException(); // Throw custom exception
+                } else if (!isValidStudentPassword(password)) {
+                    throw InvalidPasswordException(); // Throw custom exception
+                } else if (system.isStudentInList(email)) {
+                    cout << "Welcome, Student!\n";
+                    int studentChoice;
+                    while (true) {
+                        cout << "\nStudent Menu:\n";
+                        cout << "1. View your friendship network\n";
+                        cout << "2. Student Details\n";
+                        cout << "3. Exit to Main Menu\n";
+                        cout << "Enter your choice: ";
+                        cin >> studentChoice;
+
+                        switch (studentChoice) {
+                            case 1:
+                                system.showFriendshipNetwork(email);
+                                break;
+                            case 2: {
+                                string name;
+                                cout << "Enter your name: ";
+                                cin >> name;
+                                system.displayStudentDetails(name, email);
+                                break;
+                            }
+                            case 3:
+                                cout << "Returning to Main Menu...\n";
+                                goto mainMenu;
+                            default:
+                                cout << "Invalid choice. Please try again.\n";
+                                break;
+                        }
+                    }
+                } else {
+                    cout << "You are not a student.\n";
+                    cout << "Do you want to register?\n";
+                    cout << "1. Yes\n";
+                    cout << "2. No\n";
+                    cin >> mainChoice;
+                    if (mainChoice == 1) {
+                        cout << "Please contact the admin for registration.\n";
+                    } else {
+                        cout << "Thank you.\n";
+                    }
+                }
+            } else {
+                cout << "Invalid choice. Please restart the program and choose either 1 or 2.\n";
+            }
+
+            mainMenu:
+                continue;
+        }
+    } catch (const InvalidEmailException& e) {
+        cerr << "Error: " << e.what() << endl;
+    } catch (const InvalidPasswordException& e) {
+        cerr << "Error: " << e.what() << endl;
+    } catch (const exception& e) {
+        cerr << "Error: " << e.what() << endl;
+    }
+
+    return 0;
+}
